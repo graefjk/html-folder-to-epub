@@ -11,4 +11,7 @@ usage: epub-convert [Options] Input Output [List] <br />
 Input can be a file or a folder filled with html files <br />
 the list can be used to choose the order of the html files in the output epub <br />
 If no list is provided the html files are ordered by the ls command <br />
--c coverImage adds a cover image to the epub
+-c coverImage adds a cover image to the epub <br />
+<br />
+example: <br />
+epub-convert -c cover.png book_folder book.epub
