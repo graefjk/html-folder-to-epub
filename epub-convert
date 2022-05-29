@@ -1,0 +1,169 @@
+#!/bin/bash
+
+#help menu
+if [[ $1 = "--help" ]]; then
+	echo "usage: epub-convert [Options] Input Output [List]"
+	echo "Input can be a file or a folder filled with html files"
+	echo "the list can be used to choose the order of the html files in the output epub"
+	echo "If no list is provided the html files are ordered by the ls command"
+	echo "-c coverImage adds a cover image to the epub"
+	exit
+fi
+
+if [[ $1 = "-c" ]]; then
+	coverPath=$2
+	cover=$(echo $2 | sed 's/.*\///g') 
+	shift
+	shift
+fi
+
+rm $2
+
+#check if $1 is a file or a folder
+if [[ -f $1 ]]; then
+	rm -rf text
+	mkdir -p text
+	cp $1 text/$(echo $1 | sed 's/^.*\///g')
+	folder="text"
+elif [[ -d $1 ]]; then
+	folder=$1
+else
+    echo "input $1 is not valid"
+    exit 1
+fi
+
+files=$(ls $folder)
+
+if [[ -n $3 ]]; then
+	files=$(cat $3)
+fi
+
+#creating mimetype
+echo "application/epub+zip" > mimetype
+zip -0Xq $2 mimetype
+
+#creating META-INF
+mkdir -p META-INF
+echo "<?xml version=\"1.0\"?>
+<container version=\"1.0\" xmlns=\"urn:oasis:names:tc:opendocument:xmlns:container\">
+   <rootfiles>
+      <rootfile full-path=\"$folder/content.opf\" media-type=\"application/oebps-package+xml\"/>
+      
+   </rootfiles>
+</container>" > META-INF/container.xml
+zip -Xr9Dq $2 META-INF
+
+#creating titelpage.xhtml
+if [[ -n $cover ]]; then
+	cp $coverPath $folder
+	echo "<?xml version='1.0' encoding='utf-8'?>
+<html xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"en\">
+    <head>
+        <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"/>
+        <meta name=\"calibre:cover\" content=\"true\"/>
+        <title>Cover</title>
+        <style type=\"text/css\" title=\"override_css\">
+            @page {padding: 0pt; margin:0pt}
+            body { text-align: center; padding:0pt; margin: 0pt; }
+        </style>
+    </head>
+    <body>
+        <div>
+            <svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" version=\"1.1\" width=\"100%\" height=\"100%\" preserveAspectRatio=\"none\">
+                <image xlink:href=\"$cover\"/>
+            </svg>
+        </div>
+    </body>
+</html>" >$folder/titlepage.xhtml
+fi
+
+#creating content.opf
+echo "<?xml version='1.0' encoding='utf-8'?>
+<package xmlns=\"http://www.idpf.org/2007/opf\" version=\"2.0\" unique-identifier=\"uuid_id\">
+  <metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:opf=\"http://www.idpf.org/2007/opf\">
+	<dc:identifier id=\"BookId\" opf:scheme=\"UUID\">urn:uuid:5abab970-d8ee-4b6b-8783-7d41283d6e69</dc:identifier>
+    <dc:language>en</dc:language>
+    <dc:title>$(cut -d'.' -f1 <<< "$2")</dc:title>
+  </metadata>
+    <manifest>" > $folder/content.opf
+if [[ -n $cover ]]; then
+	echo "adding $cover to content"
+	echo "<item id=\"cover\" href=\"$cover\" media-type=\"image/$(echo $cover | sed 's/^.*\.//g' | sed 's/jpg/jpeg/g')\"/>
+    <item id=\"titlepage\" href=\"titlepage.xhtml\" media-type=\"application/xhtml+xml\"/>" >> $folder/content.opf
+fi
+
+let "n = 1"
+for file in $files
+do 
+echo "adding $file to content"
+echo "<item id=\"$n\" href=\"$file\" media-type=\"text/html\"/>" >> $folder/content.opf
+let "n += 1"
+done
+echo "<item id=\"ncx\" href=\"toc.ncx\" media-type=\"application/x-dtbncx+xml\"/>
+</manifest>
+  <spine toc=\"ncx\">" >> $folder/content.opf
+
+if [[ -n $cover ]]; then
+	echo "adding $cover to spine"
+	echo "<itemref idref=\"titlepage\"/>" >> $folder/content.opf
+fi
+
+let "n = 1"
+for file in $files
+do
+	echo "adding $file to spine"
+	echo "<itemref idref=\"$n\"/>" >> $folder/content.opf
+	let "n += 1"
+done
+echo  "</spine>
+</package>"  >> $folder/content.opf
+
+
+#creating the toc
+echo "<?xml version=\"1.0\" encoding=\"utf-8\"?>
+<ncx xmlns=\"http://www.daisy.org/z3986/2005/ncx/\" version=\"2005-1\">
+  <head>
+    <meta name=\"dtb:uid\" content=\"urn:uuid:2f26ef88-09a6-4655-9a57-c427bd8b5e33\" />
+    <meta name=\"dtb:depth\" content=\"0\" />
+    <meta name=\"dtb:totalPageCount\" content=\"0\" />
+    <meta name=\"dtb:maxPageNumber\" content=\"0\" />
+  </head>
+<docTitle>
+  <text>$2</text>
+</docTitle>
+<navMap>" > $folder/toc.ncx
+
+if [[ -n $cover ]]; then
+	echo "    <itemref idref=\"titlepage\"/>" >> $folder/toc.ncx
+fi
+
+let "n = 1 "
+for file in $files
+do
+	echo "adding $file to toc"
+	echo "<navPoint id=\"$n\" playOrder=\"$n\">
+  <navLabel>
+    <text>$(cut -d'.' -f1 <<< "$file")</text>
+  </navLabel>
+  <content src=\"$file\" />
+</navPoint>" >> $folder/toc.ncx
+	let "n += 1"
+done
+echo "</navMap>
+</ncx>" >> $folder/toc.ncx
+
+echo "packing epub..."
+zip -Xr9Dv $2 $folder
+
+#cleanup
+rm "$folder/content.opf"
+rm "$folder/toc.ncx"
+if [[ -f $1 ]]; then
+	rm -rf text	
+fi
+rm -rf META-INF
+rm mimetype
+
+echo "Output saved in $2"
+exit
+
