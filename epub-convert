@@ -17,7 +17,7 @@ if [[ $1 = "-c" ]]; then
 	shift
 fi
 
-rm $2
+rm -rf $2
 
 #check if $1 is a file or a folder
 if [[ -f $1 ]]; then
@@ -26,7 +26,7 @@ if [[ -f $1 ]]; then
 	cp $1 text/$(echo $1 | sed 's/^.*\///g')
 	folder="text"
 elif [[ -d $1 ]]; then
-	folder=$1
+	folder=$(echo $1 | sed 's/\/$//g' )
 else
     echo "input $1 is not valid"
     exit 1
@@ -67,11 +67,7 @@ if [[ -n $cover ]]; then
         </style>
     </head>
     <body>
-        <div>
-            <svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" version=\"1.1\" width=\"100%\" height=\"100%\" preserveAspectRatio=\"none\">
-                <image xlink:href=\"$cover\"/>
-            </svg>
-        </div>
+        <img src=\"$cover\" style=\"width:100%; height:100%\"/>
     </body>
 </html>" >$folder/titlepage.xhtml
 fi
@@ -81,9 +77,12 @@ echo "<?xml version='1.0' encoding='utf-8'?>
 <package xmlns=\"http://www.idpf.org/2007/opf\" version=\"2.0\" unique-identifier=\"uuid_id\">
   <metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:opf=\"http://www.idpf.org/2007/opf\">
     <dc:language>en</dc:language>
-    <dc:title>$(cut -d'.' -f1 <<< "$2")</dc:title>
-  </metadata>
-    <manifest>" > $folder/content.opf
+    <dc:title>$(cut -d'.' -f1 <<< "$2")</dc:title>" > $folder/content.opf
+if [[ -n $cover ]]; then
+	echo "<meta name=\"cover\" content=\"cover\"/>" >> $folder/content.opf
+fi
+echo "</metadata>
+    <manifest>" >> $folder/content.opf
 if [[ -n $cover ]]; then
 	echo "adding $cover to content"
 	echo "<item id=\"cover\" href=\"$cover\" media-type=\"image/$(echo $cover | sed 's/^.*\.//g' | sed 's/jpg/jpeg/g')\"/>
@@ -93,9 +92,9 @@ fi
 let "n = 1"
 for file in $files
 do 
-echo "adding $file to content"
-echo "<item id=\"$n\" href=\"$file\" media-type=\"text/html\"/>" >> $folder/content.opf
-let "n += 1"
+	echo "adding $file to content"
+	echo "<item id=\"$n\" href=\"$file\" media-type=\"application/xhtml+xml\"/>" >> $folder/content.opf
+	let "n += 1"
 done
 echo "<item id=\"ncx\" href=\"toc.ncx\" media-type=\"application/x-dtbncx+xml\"/>
 </manifest>
@@ -160,4 +159,3 @@ rm mimetype
 
 echo "Output saved in $2"
 exit
-
